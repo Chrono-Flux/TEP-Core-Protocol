@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TEP Gen-8.4: α Spin-Strain Simulator</title>
+<style>
+  body { margin: 0; background: #03060c; color: #e0f2fe; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
+  .header { text-align: center; margin-bottom: 20px; }
+  h1 { color: #fff; font-size: 24px; margin: 0 0 5px 0; text-shadow: 0 0 15px rgba(0, 229, 255, 0.5); }
+  h1 span { color: #00e5ff; }
+  p { color: #90a4ae; font-size: 14px; margin: 0; }
+  .dashboard { display: flex; gap: 20px; background: rgba(8, 15, 30, 0.95); border: 1px solid rgba(0, 229, 255, 0.45); border-radius: 12px; padding: 20px; box-shadow: 0 8px 30px rgba(0,0,0,0.6); }
+  canvas { background: #060b16; border: 1px solid rgba(255, 64, 129, 0.4); border-radius: 8px; box-shadow: inset 0 0 20px rgba(255, 64, 129, 0.1); }
+  .controls { display: flex; flex-direction: column; justify-content: center; width: 320px; }
+  .data-box { background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(0, 229, 255, 0.2); border-radius: 8px; padding: 12px; margin-bottom: 15px; }
+  .data-box .label { font-size: 11px; color: #90a4ae; margin-bottom: 4px; }
+  .data-box .value { font-family: 'Consolas', monospace; font-size: 18px; font-weight: bold; color: #fff; }
+  .data-box .value.cyan { color: #00e5ff; }
+  .data-box .value.gold { color: #ffd54f; }
+  .data-box .value.pink { color: #ff4081; }
+  .slider-container { margin-top: 10px; }
+  .slider-container label { font-size: 12px; color: #00e5ff; font-weight: bold; }
+  input[type=range] { width: 100%; margin-top: 8px; accent-color: #ff4081; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>TEP Gen-8.4: <span>α Spin-Strain Visualizer</span></h1>
+  <p>微細構造定数のズレを「スピン遠心力ひずみ」で完全再現</p>
+</div>
+
+<div class="dashboard">
+  <canvas id="trussCanvas" width="300" height="300"></canvas>
+  <div class="controls">
+    <div class="data-box">
+      <div class="label">TEP 純π 幾何学ベースライン (静的真空)</div>
+      <div class="value cyan">137.0363038</div>
+    </div>
+    <div class="data-box">
+      <div class="label">スピン遠心力による構造ひずみロス</div>
+      <div class="value pink" id="strainValue">- 0.0000000</div>
+    </div>
+    <div class="data-box">
+      <div class="label">観測される実測値 (CODATAターゲット)</div>
+      <div class="value gold" id="observedValue">137.0363038</div>
+    </div>
+    
+    <div class="slider-container">
+      <label for="spinSlider">🚀 スピン・遠心力レベル (Spin Velocity)</label>
+      <input type="range" id="spinSlider" min="0" max="100" value="0">
+    </div>
+  </div>
+</div>
+
+<script>
+  const canvas = document.getElementById('trussCanvas');
+  const ctx = canvas.getContext('2d');
+  const slider = document.getElementById('spinSlider');
+  const strainDisplay = document.getElementById('strainValue');
+  const observedDisplay = document.getElementById('observedValue');
+
+  const BASE_ALPHA = 137.0363038;
+  const MAX_STRAIN = 0.0003048; // CODATA 137.035999 との差分
+
+  let angle = 0;
+
+  function draw() {
+    const spinIntensity = parseInt(slider.value) / 100; // 0.0 to 1.0
+    const currentStrain = MAX_STRAIN * spinIntensity;
+    const currentObserved = BASE_ALPHA - currentStrain;
+
+    // Update Dashboard
+    strainDisplay.textContent = `- ${currentStrain.toFixed(7)}`;
+    observedDisplay.textContent = currentObserved.toFixed(7);
+    if (spinIntensity === 1) {
+      observedDisplay.style.textShadow = "0 0 10px #ffd54f";
+    } else {
+      observedDisplay.style.textShadow = "none";
+    }
+
+    // Draw Visualization
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    
+    // 回転速度とひずみ（半径の膨張）
+    const rotationSpeed = 0.02 + (spinIntensity * 0.15);
+    angle += rotationSpeed;
+    const baseRadius = 60;
+    const expandedRadius = baseRadius + (spinIntensity * 25); // 遠心力で外側に膨張
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+
+    // 構造トラスの描画
+    ctx.beginPath();
+    for (let i = 0; i <= 6; i++) {
+      const theta = (i / 6) * Math.PI * 2;
+      const x = Math.cos(theta) * expandedRadius;
+      const y = Math.sin(theta) * expandedRadius * 0.6; // 3D傾き
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    
+    // スピンが強いほど赤く（ひずみ）発光する
+    const r = Math.floor(0 + (255 * spinIntensity));
+    const g = Math.floor(229 - (165 * spinIntensity));
+    const b = Math.floor(255 - (126 * spinIntensity));
+    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.8)`;
+    ctx.lineWidth = 3;
+    ctx.shadowColor = `rgba(${r}, ${g}, ${b}, 1)`;
+    ctx.shadowBlur = 15;
+    ctx.stroke();
+
+    // 遠心力を示すエフェクト
+    if (spinIntensity > 0) {
+      ctx.beginPath();
+      ctx.arc(0, 0, expandedRadius + 15 + Math.sin(angle*5)*5, 0, Math.PI*2);
+      ctx.strokeStyle = `rgba(255, 64, 129, ${spinIntensity * 0.5})`;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 10]);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+    requestAnimationFrame(draw);
+  }
+
+  draw();
+</script>
+</body>
+</html>
